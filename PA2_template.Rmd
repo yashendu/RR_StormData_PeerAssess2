@@ -5,8 +5,19 @@ output:
     keep_md: true
 ---
 
+## Introduction
 
-## 1. Code for reading in the dataset and/or processing the data
+#This project involves exploring the U.S. National Oceanic and Atmospheric Administration's (NOAA) storm database. This database tracks characteristics of major storms and weather events in the United States, including when and where they occur, as well as estimates of any fatalities, injuries, and property damage.
+
+## Synopsis
+
+#In this project we try to explore the NOAA data storm database (1950 - 2011). Our prime objective is to find out what events are most significant in terms of fatalities, injuries and economic damage (property and crop). We'll focus our analysis to answer below two questions:
+#Q1. Across the United States, which types of events (as indicated in the EVTYPE variable) are most harmful with respect to population health?
+#Q2. Across the United States, which types of events have the greatest economic consequences?
+
+
+
+##  Reading Dataset
 
 ```{r}
 
@@ -26,136 +37,148 @@ summary(storm)
 ```
 
 
-## 2. Histogram of the total number of steps taken each day
+##  Data Processing
 
 ```{r}
 
-#Calculate the total number of steps taken per day
-stepsDaily <- aggregate(steps ~ date, act, sum, na.rm=TRUE)
-stepsDaily
+#Trim the dataset to keep only relevant columns
 
-#Histogram
+storm_sub <- storm[, c("BGN_DATE", "EVTYPE", "FATALITIES", "INJURIES", 
+    "PROPDMG", "PROPDMGEXP", "CROPDMG", "CROPDMGEXP")]
 
-hist(stepsDaily$steps, main ="Histogram of Daily Steps",xlab ="Daily Steps")
+head(storm_sub)
 
-```
+# Create subset for Question 1 & 2
 
-## 3. Mean and median number of steps taken each day
+# Select data for Fatalities and injuries from subset (Q1)
 
-```{r}
-meanStepsDaily <- mean(stepsDaily$steps)
-medianStepsDaily <- median(stepsDaily$steps)
+harm <- subset(storm_sub, !storm_sub$FATALITIES == 0 & !storm_sub$INJURIES == 
+    0, select = c(EVTYPE, FATALITIES, INJURIES))
 
-paste("Mean of steps taken each day:", meanStepsDaily)
-paste("Median number of steps taken each day:", medianStepsDaily )
+harm$FATALITIES <- as.numeric(as.character(harm$FATALITIES))
+harm$INJURIES <- as.numeric(as.character(harm$INJURIES))
 
-```
+head(harm)
 
+# Select data for various damages from subset (Q2)
 
-## 4. Time series plot of the average number of steps taken
+Dam <- subset(storm_sub, !storm_sub$PROPDMG == 0 & !storm_sub$CROPDMG == 
+    0, select = c(EVTYPE, PROPDMG, PROPDMGEXP, CROPDMG, CROPDMGEXP))
 
-```{r}
-#Make a time series plot (i.e.type = "l") of the 5-minute interval (x-axis) and the average number of steps taken, averaged across all days (y-axis)
-
-stepsInterval<-aggregate(steps~interval, data=act, mean, na.rm=TRUE)
-plot(steps~interval, data=stepsInterval, type="l")
+head(Dam)
 
 ```
 
-## 5. The 5-minute interval that, on average, contains the maximum number of steps
+## Q1 - Across the United States, which types of events (as indicated in the EVTYPE variable) are most harmful with respect to population health?
 
 ```{r}
 
-IntervalMaxSteps <- stepsInterval[which.max(stepsInterval$steps),]$interval
+# Create separate data set for Fatalities
 
-paste("The 5-minute interval that, on average, contains the maximum number of steps:", IntervalMaxSteps )
+fatal <- harm %>%
+          group_by(EVTYPE) %>%
+          summarise_each(funs(sum))%>% 
+          arrange(desc(FATALITIES))
+         
+#head(fatal)
+
+# Take top 10 events for Fatalities and corresponding Injuries
+
+fatal <- fatal[1:10,]
+
+# Create separate data set for Injury
+
+Inj <- harm %>%
+          group_by(EVTYPE) %>%
+          summarise_each(funs(sum))%>% 
+          arrange(desc(INJURIES))
+         
+#head(Inj)
+
+# Take top 10 events for Injuries
+
+Inj <- Inj[1:10,]
+#head(Inj)
+
+# Plot Fatalities and store at fatal_plot
+library(ggplot2)
+
+fatal_plot <- ggplot() + geom_bar(data = fatal, aes(x = EVTYPE, 
+    y =FATALITIES, fill = interaction(FATALITIES, EVTYPE)), stat = "identity", 
+    show.legend = F) + theme(axis.text.x = element_text(angle = 30, hjust = 1)) + 
+    xlab("Harmful Events") + ylab("FATALITIES") + ggtitle("Top 10 weather events causing FATALITIES") + 
+    theme(axis.text.x = element_text(angle = 30, hjust = 1))
+
+# Plot Fatalities and store at Inj_plot
+Inj_plot <- ggplot() + geom_bar(data = Inj, aes(x = EVTYPE, 
+    y =INJURIES, fill = interaction(INJURIES, EVTYPE)), stat = "identity", 
+    show.legend = F) + theme(axis.text.x = element_text(angle = 30, hjust = 1)) + 
+    xlab("Harmful Events") + ylab("INJURIES") + ggtitle("Top 10 weather events causing INJURIES") + 
+    theme(axis.text.x = element_text(angle = 30, hjust = 1))
+
+#Show both plots for Fatalities and Injuries
+
+require("gridExtra")
+grid.arrange(fatal_plot, Inj_plot, ncol = 2)
 
 ```
+## Assessment for Q1: Tornados are the most harmful in terms of Fatality and Injury based on given data
 
-## 6. Code to describe and show a strategy for imputing missing data
+## Q2 - Across the United States, which types of events have the greatest economic consequences?
 
 ```{r}
-#Calculate and report the total number of missing values in the dataset (i.e. the total number of rows with NAs)
+# select required entries for economy damage
+Dam <- subset(Dam, Dam$PROPDMGEXP == "K" | Dam$PROPDMGEXP == 
+    "k" | Dam$PROPDMGEXP == "M" | Dam$PROPDMGEXP == "m" | 
+    Dam$PROPDMGEXP == "B" | Dam$PROPDMGEXP == "b")
 
-TotalNA <- sum(is.na(act$steps))
-paste("total number of missing values in the dataset:", TotalNA  )
+Dam <- subset(Dam, Dam$CROPDMGEXP == "K" | Dam$CROPDMGEXP == 
+    "k" | Dam$CROPDMGEXP == "M" | Dam$CROPDMGEXP == "m" | 
+    Dam$CROPDMGEXP == "B" | Dam$CROPDMGEXP == "b")
+
+# Convert economic values to number
+Dam$PROPDMGEXP <- gsub("m", 1e+06, Dam$PROPDMGEXP, ignore.case = TRUE)
+Dam$PROPDMGEXP <- gsub("k", 1000, Dam$PROPDMGEXP, ignore.case = TRUE)
+Dam$PROPDMGEXP <- gsub("b", 1e+09, Dam$PROPDMGEXP, ignore.case = TRUE)
+Dam$PROPDMGEXP <- as.numeric(Dam$PROPDMGEXP)
+Dam$CROPDMGEXP <- gsub("m", 1e+06, Dam$CROPDMGEXP, ignore.case = TRUE)
+Dam$CROPDMGEXP <- gsub("k", 1000, Dam$CROPDMGEXP, ignore.case = TRUE)
+Dam$CROPDMGEXP <- gsub("b", 1e+09, Dam$CROPDMGEXP, ignore.case = TRUE)
+Dam$CROPDMGEXP <- as.numeric(Dam$CROPDMGEXP)
+Dam$PROPDMGEXP <- as.numeric(Dam$PROPDMGEXP)
+Dam$CROPDMG <- as.numeric(Dam$CROPDMG)
+Dam$PROPDMG <- as.numeric(Dam$PROPDMG)
+
+# then sum the damages by each event type
+Dam$TOTALDMG <- (Dam$CROPDMG * Dam$CROPDMGEXP) + 
+    (Dam$PROPDMG * Dam$PROPDMGEXP)
+
+Dam <- aggregate(Dam$TOTALDMG, by = list(Dam$EVTYPE), 
+    FUN = sum)
+
+colnames(Dam) <- c("EVTYPE", "TOTALDMG")
+
+# Rank the event type by highest damage cost and take top 5 columns
+Dam <- Dam[order(Dam$TOTALDMG, decreasing = TRUE), 
+    ]
+Dam <- Dam[1:5, ]
+
+# Now plot the graph
+ggplot() + geom_bar(data = Dam, aes(x = EVTYPE, y = TOTALDMG, fill = interaction(TOTALDMG, 
+    EVTYPE)), stat = "identity", show.legend = F) + theme(axis.text.x = element_text(angle = 30, 
+    hjust = 1)) + xlab("Event Type") + ylab("Total Damage")
+
 
 ```
+## Q2 Assessment: Flood brings most economic damage as per given data.
 
-## 7. Histogram of the total number of steps taken each day after missing values are imputed
+## Result
 
 ```{r}
 
-#To fill missing value, we can replace NAs with steps mean. To be more precise , we can also calculate and replace mean at interval level
+# As per the analysis of given data, we can infer that:
 
-#Calculate mean steps per interval (Function)
-
-MeanInter<-function(interval){
-    stepsInterval[stepsInterval$interval==interval,]$steps
-}
-
-#Create a new dataset that is equal to the original dataset but with the missing data filled in. (Replace NA with mean)
-
-act_impute<-act
-for(i in 1:nrow(act_impute)){
-    if(is.na(act_impute[i,]$steps)){
-        act_impute[i,]$steps <- MeanInter(act_impute[i,]$interval)
-    }
-}
-
-summary(act_impute)
-
-#Make a histogram of the total number of steps taken each day and Calculate and report the mean and median total number of steps taken per day. Do these values differ from the estimates from the first part of the assignment? What is the impact of imputing missing data on the estimates of the total daily number of steps?
-
-#Calculate the total number of steps taken per day with Imputed dataset
-stepsDaily_im <- aggregate(steps ~ date, data=act_impute, sum)
-stepsDaily_im
-
-#Histogram
-
-hist(stepsDaily_im$steps, main ="Histogram of Daily Steps (NA Imputed)",xlab ="Daily Steps (NA Imputed with Interval Mean)")
-
-#Mean and Median
-
-meanStepsDaily_im <- mean(stepsDaily_im$steps)
-medianStepsDaily_im <- median(stepsDaily_im$steps)
-
-paste("Mean of steps taken each day:", meanStepsDaily_im)
-paste("Median number of steps taken each day:", medianStepsDaily_im)
-
-#Impact of data imputation
-
-paste("Data Imputation Impact: No change in Mean, Median had a minute positive shift i.e ",medianStepsDaily," To ", medianStepsDaily_im)
+#1. Tornados are most harmful event in terms of fatality and Injuries.
+#2. Flood is most harmful even in terms of economic damage.
 
 ```
-
-## 8. Panel plot comparing the average number of steps taken per 5-minute interval across weekdays and weekends
-
-```{r}
-
-#Create a new factor variable in the dataset with two levels – “weekday” and “weekend” indicating whether a given date is a weekday or weekend day.
-
-act_impute$date <- as.Date(strptime(act_impute$date, format="%Y-%m-%d"))
-act_impute$day <- weekdays(act_impute$date)
-for (i in 1:nrow(act_impute)) {
-    if (act_impute[i,]$day %in% c("Saturday","Sunday")) {
-        act_impute[i,]$day<-"weekend"
-    }
-    else{
-        act_impute[i,]$day<-"weekday"
-    }
-}
-stepsByDay <- aggregate(act_impute$steps ~ act_impute$interval + act_impute$day, act_impute, mean)
-
-
-#Make a panel plot containing a time series plot (i.e. type = "l") of the 5-minute interval (x-axis) and the average number of steps taken, averaged across all weekday days or weekend days (y-axis). See the README file in the GitHub repository to see an example of what this plot should look like using simulated data.
-
-names(stepsByDay) <- c("interval", "day", "steps")
-library(lattice)
-xyplot(steps ~ interval | day, stepsByDay, type = "l", layout = c(1, 2), 
-    xlab = "Interval", ylab = "Number of steps")
-```
-
-## 9. All of the R code needed to reproduce the results (numbers, plots, etc.) in the report
-
-#Generating through converting in HTML file using knitr package
